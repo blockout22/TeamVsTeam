@@ -3,12 +3,9 @@ package team.vs.team;
 import static org.lwjgl.nanovg.NanoVG.*;
 import static org.lwjgl.nanovg.NanoVGGL3.*;
 
+import java.awt.Rectangle;
 import java.awt.image.BufferedImage;
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileReader;
-import java.io.IOException;
-import java.util.ArrayList;
+import java.io.InputStream;
 
 import javax.imageio.ImageIO;
 
@@ -19,7 +16,6 @@ import ce.core.Util;
 import ce.core.Window;
 import ce.core.input.Key;
 import ce.core.maths.Vector2f;
-import javafx.scene.paint.Color;
 
 public class TeamVs {
 
@@ -28,52 +24,15 @@ public class TeamVs {
 	private NVGColor color;
 	private float scale = 25f;
 
-	private Color[][] colors;
+	private Tile[][] tiles;
 
 	private Vector2f playerLoc = new Vector2f();
 	private Vector2f playerScale = new Vector2f(scale, scale * 2);
 
 	public TeamVs() {
-
-		try {
-			BufferedReader br = new BufferedReader(new FileReader(new File("src/map.info")));
-			ArrayList<String> target = new ArrayList<String>();
-			target.add("map");
-			target.add("bounds");
-			
-			String endTargetFlag = "end";
-			boolean process = false;
-			
-			String line;
-			while ((line = br.readLine()) != null) {
-//				System.out.println(line);
-				
-				if(process) {
-					if(line.equals(endTargetFlag)) {
-						process = false;
-						continue;
-					}
-					System.err.println(line);
-					continue;
-				}
-
-				for (String s : target) {
-					if (line.contains(s)) {
-						process = true;
-						System.out.println("Found");
-					}
-				}
-				Thread.sleep(325);
-			}
-
-			br.close();
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
-
-		// init();
-		// loop();
-		// close();
+		init();
+		loop();
+		close();
 	}
 
 	public void init() {
@@ -89,11 +48,14 @@ public class TeamVs {
 
 		color = NVGColor.create();
 		try {
-			BufferedImage image = ImageIO.read(Util.loadInternal("map.png"));
-			colors = new Color[image.getWidth()][image.getHeight()];
-			for (int x = 0; x < image.getWidth(); x++) {
-				for (int y = 0; y < image.getHeight(); y++) {
-					int rgb = image.getRGB(x, y);
+			InputStream in1 = Util.loadInternal("map.png");
+			InputStream in2 = Util.loadInternal("collision.png");
+			BufferedImage map = ImageIO.read(in1);
+			BufferedImage collision = ImageIO.read(in2);
+			tiles = new Tile[map.getWidth()][map.getHeight()];
+			for (int x = 0; x < map.getWidth(); x++) {
+				for (int y = 0; y < map.getHeight(); y++) {
+					int rgb = map.getRGB(x, y);
 					float r = (rgb >> 16) & 0xFF;
 					float g = (rgb >> 8) & 0xFF;
 					float b = (rgb & 0xFF);
@@ -115,12 +77,18 @@ public class TeamVs {
 						a = a / 255f;
 					}
 
-					colors[x][y] = new Color(r, g, b, a);
+					float colAlpha = ((collision.getRGB(x, y) >> 24) & 0xFF);
+
+					tiles[x][y] = new Tile(r, g, b, a, colAlpha > 0);
+					System.out.println(tiles[x][y].isCanCollide());
 				}
 			}
 
-			image.flush();
-		} catch (IOException e) {
+			map.flush();
+			collision.flush();
+			in1.close();
+			in2.close();
+		} catch (Exception e) {
 			e.printStackTrace();
 		}
 
@@ -147,12 +115,18 @@ public class TeamVs {
 				// nvgFillColor(ctx, setColor(1, 0, 0, 0.5f));
 				// nvgFill(ctx);
 
-				for (int x = 0; x < colors.length; x++) {
-					for (int y = 0; y < colors[x].length; y++) {
+				for (int x = 0; x < tiles.length; x++) {
+					for (int y = 0; y < tiles[x].length; y++) {
+						float xPos = x * scale;
+						float yPos = y * scale;
 						nvgBeginPath(ctx);
-						nvgRect(ctx, x * scale, y * scale, scale, scale);
-						nvgFillColor(ctx, setColor((float) colors[x][y].getRed(), (float) colors[x][y].getGreen(), (float) colors[x][y].getBlue(), (float) colors[x][y].getOpacity()));
+						nvgRect(ctx, xPos, yPos, scale, scale);
+						nvgFillColor(ctx, setColor(tiles[x][y].getRed(), tiles[x][y].getGreen(), tiles[x][y].getBlue(), tiles[x][y].getAlpha()));
 						nvgFill(ctx);
+						if (tiles[x][y].isCanCollide()) {
+							checkCollision(xPos, yPos, scale, scale);
+						}
+
 					}
 				}
 
@@ -184,6 +158,15 @@ public class TeamVs {
 			}
 
 			window.update();
+		}
+	}
+
+	private void checkCollision(float xPos, float yPos, float scaleX, float scaleY) {
+		Rectangle objRect = new Rectangle((int) xPos, (int) yPos, (int) scaleX, (int) scaleY);
+		Rectangle playerRect = new Rectangle((int) playerLoc.x, (int) playerLoc.y, (int) playerScale.x, (int) playerScale.y);
+
+		if (playerRect.intersects(objRect)) {
+			System.out.println("COLLIDE");
 		}
 	}
 
@@ -220,5 +203,45 @@ public class TeamVs {
 	public static void main(String[] args) {
 		new TeamVs();
 	}
+
+	// private void reader()
+	// {
+	// try {
+	// BufferedReader br = new BufferedReader(new FileReader(new
+	// File("src/map.info")));
+	// ArrayList<String> target = new ArrayList<String>();
+	// target.add("map");
+	// target.add("bounds");
+	//
+	// String endTargetFlag = "end";
+	// boolean process = false;
+	//
+	// String line;
+	// while ((line = br.readLine()) != null) {
+	//// System.out.println(line);
+	//
+	// if(process) {
+	// if(line.equals(endTargetFlag)) {
+	// process = false;
+	// continue;
+	// }
+	// System.err.println(line);
+	// continue;
+	// }
+	//
+	// for (String s : target) {
+	// if (line.contains(s)) {
+	// process = true;
+	// System.out.println("Found");
+	// }
+	// }
+	// Thread.sleep(325);
+	// }
+	//
+	// br.close();
+	// } catch (Exception e) {
+	// e.printStackTrace();
+	// }
+	// }
 
 }
