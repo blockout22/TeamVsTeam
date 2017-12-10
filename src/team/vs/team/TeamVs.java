@@ -5,7 +5,13 @@ import static org.lwjgl.nanovg.NanoVGGL3.*;
 
 import java.awt.Rectangle;
 import java.awt.image.BufferedImage;
+import java.io.IOException;
 import java.io.InputStream;
+import java.net.DatagramPacket;
+import java.net.DatagramSocket;
+import java.net.InetAddress;
+import java.net.SocketException;
+import java.net.UnknownHostException;
 
 import javax.imageio.ImageIO;
 
@@ -29,6 +35,11 @@ public class TeamVs {
 	private Vector2f playerLoc = new Vector2f();
 	private Vector2f playerScale = new Vector2f(scale, scale * 2);
 
+	private boolean running = true;
+	private String ip = "localhost";
+	private int port = 1234;
+	private DatagramSocket socket;
+
 	public TeamVs() {
 		init();
 		loop();
@@ -38,6 +49,53 @@ public class TeamVs {
 	public void init() {
 		window = Window.createWindow(new Scene(1080, 850), "Team Vs Team");
 		initNanoVG();
+
+		try {
+			socket = new DatagramSocket();
+		} catch (SocketException e) {
+			e.printStackTrace();
+			return;
+		}
+
+		new Thread(new Runnable() {
+			public void run() {
+				while (running) {
+					byte[] buffer = new byte[1024];
+
+					DatagramPacket dataPacket = new DatagramPacket(buffer, buffer.length);
+
+					try {
+						socket.receive(dataPacket);
+					} catch (IOException e) {
+						e.printStackTrace();
+					}
+					String message = new String(dataPacket.getData()).trim();
+
+					if (message.equals("close")) {
+						break;
+					}
+
+					if (message.equals("pong")) {
+						System.out.println("[CLIENT] RECIEVED RESPONSE");
+					}
+				}
+			}
+		}).start();
+	}
+
+	private void closeSocket() {
+		try {
+			byte[] buffer = "close".getBytes();
+			DatagramPacket packet = new DatagramPacket(buffer, buffer.length, InetAddress.getByName(""), socket.getLocalPort());
+			socket.send(packet);
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+	}
+
+	public void send(byte[] data, InetAddress ip, int port) throws IOException {
+		DatagramPacket packet = new DatagramPacket(data, data.length, ip, port);
+		socket.send(packet);
 	}
 
 	private void initNanoVG() {
@@ -157,8 +215,22 @@ public class TeamVs {
 				playerLoc.x += 1.1f;
 			}
 
+			if (window.input.isKeyPressed(Key.KEY_P)) {
+				try {
+					send("ping".getBytes(), InetAddress.getByName(ip), port);
+				} catch (UnknownHostException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				} catch (IOException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+			}
+
 			window.update();
 		}
+		running = false;
+		closeSocket();
 	}
 
 	private void checkCollision(float xPos, float yPos, float scaleX, float scaleY) {
